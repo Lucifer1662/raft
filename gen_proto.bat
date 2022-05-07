@@ -1,0 +1,1 @@
+protoc --go_out=pb/raft --go_opt=paths=source_relative --go-grpc_out=pb/raft --go-grpc_opt=paths=source_relative,require_unimplemented_servers=false  raft.proto

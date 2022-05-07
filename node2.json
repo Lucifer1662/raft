@@ -1,0 +1,6 @@
+{
+    "port":8001,
+    "NodeId": 2,
+    "Peer_ids":[1],
+    "Peer_ips":["localhost:8000"]
+}
