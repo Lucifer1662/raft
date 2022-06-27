@@ -18,6 +18,8 @@ type Raft struct {
 	log             raftLog.Log
 	votedInLastTerm int64
 
+	votesRequired int64
+
 	electionMinTimeoutDuration time.Duration
 	electionMaxTimeoutDuration time.Duration
 	electionTimeout            time.Ticker
@@ -39,7 +41,13 @@ func New(peers []Peer, nodeid int,
 	recieveElection chan (Election),
 	recieveElectionReply chan (ElectionReply),
 ) Raft {
-	return Raft{peers: peers,
+
+	for i := range peers {
+		peers[i].CommitIndex = -2
+	}
+
+	return Raft{
+		peers:                      peers,
 		state:                      Candidate,
 		nodeid:                     nodeid,
 		votedInLastTerm:            -1,
@@ -52,6 +60,7 @@ func New(peers []Peer, nodeid int,
 		electionMaxTimeoutDuration: 5 * time.Second,
 		heartBeatInterval:          2000 * time.Millisecond,
 		electionTimeout:            time.Ticker{},
+		votesRequired:              int64(math.Floor((float64(len(peers)+1) / 2.0) + 1)),
 	}
 }
 
@@ -138,13 +147,37 @@ func (raft *Raft) HandleAppendEntry(appendEntry AppendEntry) AppendEntryReply {
 		raft.resetElectionTimeoutDuration()
 	}
 
+	if len(appendEntry.Entries) > 0 {
+		raft.log.SetFrom(appendEntry.Entries[0].Index, appendEntry.Entries)
+	}
+
 	return AppendEntryReply{
 		CurrentIndex: raft.log.CommitIndex(),
+		Nodeid:       raft.nodeid,
 	}
 }
 
-func (raft *Raft) HandleAppendEntryReply(appendEntryReply AppendEntryReply) {
+func (raft *Raft) LogMajorityAt(commit int64) bool {
+	var count int64 = 0
+	for i := range raft.peers {
+		if raft.peers[i].CommitIndex >= commit {
+			count += 1
+		}
+	}
 
+	return count >= raft.votesRequired
+}
+
+func (raft *Raft) HandleAppendEntryReply(appendEntryReply AppendEntryReply) {
+	raft.peers[appendEntryReply.Nodeid].CommitIndex = appendEntryReply.CurrentIndex
+
+	//check for new majority in commit index
+	for i := raft.log.CommitIndex(); i < int64(raft.log.Length()); i++ {
+		if !raft.LogMajorityAt(i) {
+			raft.log.SetCommitIndex(i - 1)
+			break
+		}
+	}
 }
 
 func (raft *Raft) HandleElection(election Election) ElectionReply {
@@ -162,9 +195,8 @@ func (raft *Raft) HandleElection(election Election) ElectionReply {
 }
 
 func (raft *Raft) checkMajority() {
-	votesRequired := int(math.Floor((float64(len(raft.peers)+1) / 2.0) + 1))
-	log.Printf("Voted Required: %d, Votes: %d, Term: %d", votesRequired, raft.votes, raft.term)
-	if raft.votes >= votesRequired {
+	log.Printf("Voted Required: %d, Votes: %d, Term: %d", raft.votesRequired, raft.votes, raft.term)
+	if raft.votes >= raft.votesRequired {
 		raft.setState(Leader)
 	}
 }
@@ -179,6 +211,21 @@ func (raft *Raft) HandleElectionReply(electionReply ElectionReply) {
 
 }
 
+func (raft *Raft) GetUnseenEntries(peer *Peer) []Entry {
+	if peer.CommitIndex == -2 {
+		return []Entry{}
+	}
+
+	es := raft.log.GetBack(0)
+	nes := make([]Entry, len(es))
+
+	for i, _ := range es {
+		nes[i] = es[i].(Entry)
+	}
+
+	return nes
+}
+
 func (raft *Raft) HeartBeat() {
 	if raft.state == Leader {
 		for _, p := range raft.peers {
@@ -186,6 +233,7 @@ func (raft *Raft) HeartBeat() {
 				CommitIndex: raft.log.CommitIndex(),
 				Term:        raft.term,
 				Nodeid:      raft.nodeid,
+				Entries:     raft.GetUnseenEntries(&p),
 			})
 		}
 	}
@@ -198,6 +246,10 @@ func (raft *Raft) PeerWithId(id int) *Peer {
 		}
 	}
 	return nil
+}
+
+func (raft *Raft) Append(payload string) {
+	raft.log.Append(Entry{Payload: payload, Index: int64(raft.log.Length())})
 }
 
 func (raft *Raft) Start() {

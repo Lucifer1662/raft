@@ -58,7 +58,7 @@ func (t *GRPCTransportServer) Election(ctx context.Context, in *pb.ElectionReque
 }
 
 func (t *GRPCTransportServer) ReplyAppendEntry(_ context.Context, in *pb.AppendEntryReply) (*pb.Empty, error) {
-	t.recieveAppendEntryReply <- raft.AppendEntryReply{CurrentIndex: in.CurrentIndex}
+	t.recieveAppendEntryReply <- raft.AppendEntryReply{CurrentIndex: in.CurrentIndex, Nodeid: int(in.NodeId)}
 	return &pb.Empty{}, nil
 }
 

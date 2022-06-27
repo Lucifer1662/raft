@@ -1,48 +1,23 @@
 package main
 
 import (
-	"raft/config"
-	"raft/raft"
-	"raft/transport"
+	"raft/raftService"
+	"time"
 )
 
 func main() {
 
-	config := config.GetConfig()
-	if config == nil {
-		return
-	}
-
-	recieveAppendEntry := make(chan (raft.AppendEntry), 3)
-	recieveAppendEntryReply := make(chan (raft.AppendEntryReply), 3)
-	recieveElection := make(chan (raft.Election), 3)
-	recieveElectionReply := make(chan (raft.ElectionReply), 3)
-
-	clients := make([]transport.GRPCTransportClient, len(config.Peer_ips))
-	server := transport.NewServer(
-		recieveAppendEntry, recieveAppendEntryReply, recieveElection, recieveElectionReply,
-	)
-
-	for i := range clients {
-		clients[i] = transport.NewClient(config.Peer_ips[i])
-	}
-
+	raft := raftService.New()
 	go func() {
-		server.Start(config.Port)
+		raft.Start()
 	}()
 
-	peers := make([]raft.Peer, len(config.Peer_ids))
+	timer := time.NewTicker(time.Second * 2)
 
-	for i := range peers {
-		peers[i] = raft.Peer{
-			Ip:          config.Peer_ips[i],
-			CommitIndex: -1, Id: config.Peer_ids[i],
-			Transport: clients[i],
-		}
+	for {
+		<-timer.C
+		raft.Append()
+
 	}
 
-	raftServer := raft.New(peers, config.NodeId,
-		recieveAppendEntry, recieveAppendEntryReply, recieveElection, recieveElectionReply)
-
-	raftServer.Start()
 }

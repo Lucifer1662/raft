@@ -22,6 +22,7 @@ type AppendEntry struct {
 
 type AppendEntryReply struct {
 	CurrentIndex int64
+	Nodeid       int
 }
 
 type Election struct {

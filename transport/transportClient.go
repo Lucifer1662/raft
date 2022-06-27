@@ -90,7 +90,7 @@ func (t GRPCTransportClient) SendAppendEntryReply(r raft.AppendEntryReply) {
 		defer conn.Close()
 		client := pb.NewRaftClient(conn)
 
-		m := pb.AppendEntryReply{CurrentIndex: r.CurrentIndex}
+		m := pb.AppendEntryReply{CurrentIndex: r.CurrentIndex, NodeId: int32(r.Nodeid)}
 
 		client.ReplyAppendEntry(DeadLineContext(), &m)
 	}()
